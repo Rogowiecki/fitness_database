@@ -1,84 +1,72 @@
--- Удаление базы данных 
+-- Удаление базы данных
 -- DROP DATABASE fitness_center_db;
 
 -- Создание таблиц
-CREATE TABLE IF NOT EXISTS trainers (
-    id SERIAL PRIMARY KEY,
-    full_name VARCHAR(50),
-    specialization VARCHAR(50)
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    role VARCHAR(50) NOT NULL CHECK (role IN ('клиент', 'тренер'))
 );
 
-CREATE TABLE IF NOT EXISTS clients (
-    id SERIAL PRIMARY KEY,
-    full_name VARCHAR(50),
-    phone VARCHAR(20),
-    email VARCHAR(100),
-    trainer_id INT REFERENCES trainers(id)
+CREATE TABLE trainers (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    specialty VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS memberships (
-    id SERIAL PRIMARY KEY,
-    membership_name VARCHAR(50),
-    price NUMERIC(7,2),
-    duration_days INT
+CREATE TABLE trainings (
+    id BIGSERIAL PRIMARY KEY,
+    trainer_id BIGINT NOT NULL REFERENCES trainers(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    description VARCHAR(1000),
+    capacity INT NOT NULL CHECK (capacity > 0),
+    duration INT NOT NULL CHECK (duration > 0)
 );
 
-CREATE TABLE IF NOT EXISTS visits (
-    id SERIAL PRIMARY KEY,
-    client_id INT REFERENCES clients(id),
-    visit_date TIMESTAMP
+CREATE TABLE reservations (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    training_id BIGINT NOT NULL REFERENCES trainings(id) ON DELETE CASCADE,
+    reserved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    status VARCHAR(50) NOT NULL CHECK (status IN ('Подтверждено', 'Отменено'))
 );
 
--- Очистка таблиц перед вставкой тестовых данных
-TRUNCATE TABLE visits RESTART IDENTITY CASCADE;
-TRUNCATE TABLE clients RESTART IDENTITY CASCADE;
-TRUNCATE TABLE memberships RESTART IDENTITY CASCADE;
-TRUNCATE TABLE trainers RESTART IDENTITY CASCADE;
-
--- Вставка тестовых данных в тренеров
-INSERT INTO trainers (full_name, specialization)
-SELECT
-    trainer_name,
-    specialization
-FROM (
-    SELECT unnest(array['Sergey Ivanov', 'Alexey Petrov', 'Dmitry Sidorov', 'Nikolay Smirnov', 'Andrey Fedorov']) AS trainer_name,
-           unnest(array['Yoga', 'Boxing', 'Crossfit', 'Pilates', 'Bodybuilding']) AS specialization
-) AS trainer_data;
-
--- Список имен и фамилий для случайной генерации клиентов
-WITH name_data AS (
-    SELECT 
-        unnest(array['Anna', 'Maria', 'Elena', 'Olga', 'Natalia', 'Irina', 'Tatiana', 'Yulia', 'Victoria', 'Daria']) AS first_name,
-        unnest(array['Ivanova', 'Petrova', 'Sidorova', 'Kozlova', 'Smirnova', 'Volkova', 'Lebedeva', 'Fedorova', 'Makarova', 'Orlova']) AS last_name
+-- Вставка тестовых данных в users
+WITH users_data AS (
+    SELECT unnest(array['Анна', 'Олег', 'Мария', 'Сергей', 'Дмитрий']) AS name,
+           unnest(array['anna@example.com', 'oleg@example.com', 'maria@example.com', 'sergey@example.com', 'dmitry@example.com']) AS email,
+           unnest(array['+79110000001', '+79110000002', '+79110000003', '+79110000004', '+79110000005']) AS phone,
+           unnest(array['клиент', 'тренер', 'клиент', 'тренер', 'клиент']) AS role
 )
--- Вставка тестовых данных в клиентов
-INSERT INTO clients (full_name, phone, email, trainer_id)
-SELECT
-    first_name || ' ' || last_name,
-    '+7' || trunc(9000000000 + random() * 100000000)::bigint,
-    lower(first_name) || trunc(random() * 100)::int || '@fitness.com',
-    trunc(random() * 5 + 1)::int  -- случайный тренер от 1 до 5
-FROM name_data
-ORDER BY random()
-LIMIT 10;
+INSERT INTO users (name, email, phone, role)
+SELECT name, email, phone, role FROM users_data;
 
--- Вставка тестовых данных в абонементы
-INSERT INTO memberships (membership_name, price, duration_days)
-SELECT
-    membership,
-    round((1500 + random() * 5000)::numeric, 2),
-    duration
-FROM (
-    SELECT unnest(array['Basic', 'Standard', 'Premium', 'VIP']) AS membership,
-           unnest(array[30, 60, 90, 180]) AS duration
-) AS membership_data;
+-- Вставка тестовых данных в trainers
+INSERT INTO trainers (user_id, specialty)
+SELECT id, unnest(array['Фитнес', 'Йога']) FROM users WHERE role = 'тренер';
 
--- Вставка тестовых данных в посещения
-INSERT INTO visits (client_id, visit_date)
-SELECT
-    trunc(random() * 10 + 1)::int,
-    NOW() - (trunc(random() * 60) || ' days')::interval
-FROM generate_series(1, 30);
+-- Вставка тестовых данных в trainings
+WITH trainings_data AS (
+    SELECT unnest(array['Кардио', 'Силовая тренировка', 'Йога для начинающих']) AS name,
+           unnest(array['Тренировка для развития выносливости', 'Комплекс упражнений с отягощением', 'Расслабляющие упражнения']) AS description,
+           unnest(array[10, 8, 12]) AS capacity,
+           unnest(array[60, 45, 90]) AS duration
+)
+INSERT INTO trainings (trainer_id, name, description, capacity, duration)
+SELECT (random() * 2 + 1)::int, name, description, capacity, duration FROM trainings_data;
+
+-- Вставка тестовых данных в reservations
+INSERT INTO reservations (user_id, training_id, reserved_at, status)
+SELECT 
+    (random() * 3 + 1)::int,
+    (random() * 3 + 1)::int,
+    NOW() - (trunc(random() * 5) || ' days')::interval,
+    'Подтверждено';
 
 -- Проверка
-SELECT * FROM clients;
+SELECT * FROM users;
+SELECT * FROM trainers;
+SELECT * FROM trainings;
+SELECT * FROM reservations;
